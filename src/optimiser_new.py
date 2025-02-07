@@ -2,6 +2,7 @@ import numpy as np
 from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from math import factorial
 import os
 import datetime
 from time import time
@@ -38,13 +39,14 @@ class Optimiser:
         # Define the expected signatures of Brownian motion
         T = self.env.T
         expected_sig = [1, T, 0, T**2/2,  0, 0, T/2, T**3/6, 0, 0, T**2/4, 0, 0, T**2/4, 0]
-        self.W_sig_expected = ta.sig_to_tensor(expected_sig, dim = self.dim, order = self.order)
+        #self.W_sig_expected = ta.sig_to_tensor(expected_sig, dim = self.dim, order = self.order)
         #self.W_sig_expected = expected_signature_bm(self.env, order = self.order, nsims = 100_000)
         
         # Define polynomial approx to the filtered signal's volatility
         sigma_alpha_hat = self.env.b1*self.env.V_alpha/self.env.sigma_s
         p_coef = np.polyfit(self.env.timesteps, sigma_alpha_hat, deg = self.poly_deg)
-        self.p_coef = p_coef[::-1]
+        factorials = np.array([factorial(i) for i in range(self.poly_deg + 1)])
+        self.p_coef = p_coef[::-1]*factorials
         
         # Define the volatility in terms of signatures
         
@@ -52,7 +54,7 @@ class Optimiser:
         word = (1,)
         for k in range(len(p_coef)):
             word_tensor = ta.word(word,self.dim)
-            self.vol_sig += word_tensor*p_coef[k]
+            self.vol_sig += word_tensor*self.p_coef[k]
             word = (0,) + word
 
     @staticmethod
@@ -99,28 +101,34 @@ class Optimiser:
 
         # Define functional of performance criterion
         
-        M_max = 2*F.order
+        M_max = F.order
+        #M_max = 2*F.order
         p_perf = -F.shuffle(F, max_order = M_max)
         p_perf = p_perf*(self.e1*self.env.k)
-        M_max = (F*self.e1).order + F.order
+        #M_max = (F*self.e1).order + F.order
         p_perf += ((F*self.e1).shuffle(F, max_order = M_max))*(self.e1*(self.env.b2 - 2*self.env.theta1))
-        M_max = (F*self.e1).order + trunc_lev_1
+        #M_max = (F*self.e1).order + trunc_lev_1
         p_perf += ((F*self.e1).shuffle(f_alpha, max_order = M_max))*(self.e1*self.env.b1)
         p_perf += ((F*self.e1)*(self.e1*self.env.b0))
         F_prod_e1 = F*self.e1
-        M_max = 2*F_prod_e1.order
+        #M_max = 2*F_prod_e1.order
         p_perf -= (F_prod_e1.shuffle(F_prod_e1, max_order = M_max))*(self.e1*self.env.theta2)
+        #p_perf = p_perf.truncate(self.order)
         #p_perf += (F_prod_e1)*(self.e2*self.env.sigma_s)
         
         #W_sig_expected = expected_signature_bm(self.env, order = self.order, nsims = 1_000)
         
+        #criterion = p_perf.dot(W_sig_expected)
         criterion = p_perf.dot(self.W_sig_expected)
+        
+        self.p_perf = p_perf
 
         return -float(criterion)
 
 
     def train(self, trunc_lev_s = 3, trunc_lev_alpha_hat = 8, method="BFGS", **kwargs):
         F = self.F.flatten()    
+        #F = np.zeros(len(self.F.flatten()))
 
         pbar = tqdm(desc="Optimising")
         t = time()
@@ -134,7 +142,7 @@ class Optimiser:
         self.F = ta.sig_to_tensor(F, self.dim, self.order)
 
         print("Done in {} seconds. Maximum value: {}".format(dt, -res.fun))
-
+        
     def train_sgd(self, paths, n_epochs, lr=0.01, method="SGD"):
         # Define tensor algebra constants.
         ONE = ta.one(self.dim)

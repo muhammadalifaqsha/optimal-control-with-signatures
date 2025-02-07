@@ -150,7 +150,7 @@ class environment:
         S[0,:] = self.S0
         Q[0,:] = self.Q0
         X[0,:] = self.X0
-        run_risk = np.zeros((self.Nt+1, nsims))
+        run_crit = np.zeros((self.Nt+1, nsims))
         for it in range(self.Nt):
             self.S = S
             self.alpha = alpha
@@ -168,7 +168,7 @@ class environment:
             self.alpha_t = alpha_t
             self.nu_t = nu_t
             
-            run_risk[it+1,:] = run_risk[it,:] + self.theta2*(Q[it,:]**2)*dt
+            run_crit[it+1,:] = run_crit[it,:] + (-self.k*nu_t**2 + (self.b2 - 2*self.theta1)*self.Q[it,:]*nu_t + self.b0*self.Q[it,:] - self.theta2*(self.Q[it,:])**2)*dt
             
             S[it+1,:] = S[it,:] + (self.b0 + self.b1*alpha_t + self.b2*nu_t)*dt + self.sigma_s*np.random.randn(1, nsims)*np.sqrt(dt)
             
@@ -190,7 +190,7 @@ class environment:
         nu[-1,:] = nu[-2,:]
         self.nu = nu
         self.wealth = self.X + self.Q*self.S
-        self.crit = self.wealth - self.theta1*self.Q**2 - run_risk
+        self.run_crit = run_crit
         
     def optimal_strag(self, env, it):
         alpha_hat_t = env.alpha_hat[it,:]
