@@ -30,6 +30,7 @@ class Optimiser:
         self.e1 = ta.word((0,), self.dim)
         self.e2 = ta.word((1,), self.dim)
         self.poly_deg = poly_deg
+        self.Q0 = self.e0*self.env.Q0
 
         # Define the linear functionals we'll be solving for.
         self.F = ta.Tensor(env.dim, self.order)
@@ -38,9 +39,9 @@ class Optimiser:
  
         # Define the expected signatures of Brownian motion
         T = self.env.T
-        expected_sig = [1, T, 0, T**2/2,  0, 0, T/2, T**3/6, 0, 0, T**2/4, 0, 0, T**2/4, 0]
+        #expected_sig = [1, T, 0, T**2/2,  0, 0, T/2, T**3/6, 0, 0, T**2/4, 0, 0, T**2/4, 0]
         #self.W_sig_expected = ta.sig_to_tensor(expected_sig, dim = self.dim, order = self.order)
-        #self.W_sig_expected = expected_signature_bm(self.env, order = self.order, nsims = 100_000)
+        self.W_sig_expected = expected_signature_bm(self.env, order = self.order, nsims = 10_000)
         
         # Define polynomial approx to the filtered signal's volatility
         sigma_alpha_hat = self.env.b1*self.env.V_alpha/self.env.sigma_s
@@ -106,14 +107,14 @@ class Optimiser:
         p_perf = -F.shuffle(F, max_order = M_max)
         p_perf = p_perf*(self.e1*self.env.k)
         #M_max = (F*self.e1).order + F.order
-        p_perf += ((F*self.e1).shuffle(F, max_order = M_max))*(self.e1*(self.env.b2 - 2*self.env.theta1))
+        p_perf += ((F*self.e1).shuffle(F, max_order = M_max) + self.Q0*F)*(self.e1*(self.env.b2 - 2*self.env.theta1))
         #M_max = (F*self.e1).order + trunc_lev_1
-        p_perf += ((F*self.e1).shuffle(f_alpha, max_order = M_max))*(self.e1*self.env.b1)
-        p_perf += ((F*self.e1)*(self.e1*self.env.b0))
+        p_perf += ((F*self.e1).shuffle(f_alpha, max_order = M_max) + self.Q0*f_alpha)*(self.e1*self.env.b1)
+        p_perf += ((F*self.e1 + self.Q0)*(self.e1*self.env.b0))
         F_prod_e1 = F*self.e1
         #M_max = 2*F_prod_e1.order
-        p_perf -= (F_prod_e1.shuffle(F_prod_e1, max_order = M_max))*(self.e1*self.env.theta2)
-        #p_perf = p_perf.truncate(self.order)
+        p_perf -= (F_prod_e1.shuffle(F_prod_e1, max_order = M_max) + self.Q0*F_prod_e1 + F_prod_e1*self.Q0 + self.Q0*self.Q0)*(self.e1*self.env.theta2)
+        p_perf = p_perf.truncate(self.order)
         #p_perf += (F_prod_e1)*(self.e2*self.env.sigma_s)
         
         #W_sig_expected = expected_signature_bm(self.env, order = self.order, nsims = 1_000)
@@ -143,22 +144,13 @@ class Optimiser:
 
         print("Done in {} seconds. Maximum value: {}".format(dt, -res.fun))
         
-    def train_sgd(self, paths, n_epochs, lr=0.01, method="SGD"):
-        # Define tensor algebra constants.
-        ONE = ta.one(self.dim)
-        E1 = ta.e(0, self.dim)
-        E2 = ta.e(1, self.dim)
-        E3 = ta.e(2, self.dim)
-
-        # Define spot prices.
-        s01 = paths[0][0, 1]
-        s02 = paths[0][0, 2]
-
+    def train_sgd(self, n_epochs, lr=0.01, trunc_lev_s = 3, trunc_lev_alpha_hat = 8, method="SGD"):
+        
         # Define Torch optimiser.
         if method == "SGD":
-            optimiser = optim.SGD(self.l1.value + self.l2.value, lr=lr)
+            optimiser = optim.SGD(self.F.value, lr=lr)
         elif method == "Adam":
-            optimiser = optim.Adam(self.l1.value + self.l2.value, lr=lr)
+            optimiser = optim.Adam(self.F.value, lr=lr)
         else:
             raise ValueError("Method {} not supported.".format(method))
 
@@ -169,38 +161,50 @@ class Optimiser:
 
             # Define polynomial on the dual of the tensor algebra
 
-            gl1 = self.params["Lambda1"] * self.l1
-            gl2 = self.params["Lambda2"] * self.l2
+            # Defining the representation of S and \hat{\alpha} in terms of the innovation process
+            trunc_lev = trunc_lev_s
+            trunc_lev_1 = trunc_lev_alpha_hat
 
-            pl1 = E2 + s01 * ONE
-            pl2 = E3 + s02 * ONE
-            ptildel1 = E2 + s01 * ONE - gl1
-            ptildel2 = E3 + s02 * ONE - gl2
+            f_s = self.e0*self.env.alpha0 + self.F*self.e1*self.env.a2 + self.e1*self.env.a0
+            word = (1,)
+            f_s += self.vol_sig
+            exp_a1 = (self.e1*self.env.a1).exp(MAX_ITER = 200, MAX_LEVEL = trunc_lev)
+            f_s = f_s*exp_a1
+            f_s = f_s*(self.e1*self.env.b1)
+            f_s += self.e2*self.env.sigma_s
+            f_s += self.e1*self.env.b0
+            f_s += self.F*(self.e1*self.env.b2)
+            f_s += self.e0*self.env.S0 
+            f_s = f_s.truncate(trunc_lev)
 
+            f_alpha = self.e0*self.env.alpha0 + self.F*self.e1*self.env.a2 + self.e1*self.env.a0
+            word = (1,)
+            f_alpha += self.vol_sig
+            exp_a1 = (self.e1*self.env.a1).exp(MAX_ITER = 200, MAX_LEVEL = trunc_lev_1)
+            f_alpha = f_alpha*exp_a1
+            f_alpha = f_alpha.truncate(trunc_lev_1)
 
-            wl1 = ptildel1.shuffle(self.l1) * E1
-            wl2 = ptildel2.shuffle(self.l2) * E1
+            # Define functional of performance criterion
 
-            ql1 = (self.params["q0"] / self.params["s0"]) * ONE - self.l1 * E1
-            ql2 = -self.l2 * E1
+            M_max = self.F.order
+            #M_max = 2*F.order
+            p_perf = -self.F.shuffle(self.F, max_order = M_max)
+            p_perf = p_perf*(self.e1*self.env.k)
+            #M_max = (F*self.e1).order + F.order
+            p_perf += ((self.F*self.e1).shuffle(self.F, max_order = M_max) + self.Q0*self.F)*(self.e1*(self.env.b2 - 2*self.env.theta1))
+            #M_max = (F*self.e1).order + trunc_lev_1
+            p_perf += ((self.F*self.e1).shuffle(f_alpha, max_order = M_max) + self.Q0*f_alpha)*(self.e1*self.env.b1)
+            p_perf += ((self.F*self.e1 + self.Q0)*(self.e1*self.env.b0))
+            F_prod_e1 = self.F*self.e1
+            #M_max = 2*F_prod_e1.order
+            p_perf -= (F_prod_e1.shuffle(F_prod_e1, max_order = M_max) + self.Q0*F_prod_e1 + F_prod_e1*self.Q0 + self.Q0*self.Q0)*(self.e1*self.env.theta2)
+            p_perf = p_perf.truncate(self.order)
+            #p_perf += (F_prod_e1)*(self.e2*self.env.sigma_s)
 
-            ml1 = ql1.shuffle(pl1)
+            #W_sig_expected = expected_signature_bm(self.env, order = self.order, nsims = 1_000)
 
-            poly = wl2
-            poly += ml1.shuffle(pl2 - self.params["alpha1"] * ml1)
-            poly += (ql2 + wl1).shuffle(pl2 - self.params["alpha2"] * ql2 - self.params["alpha2"] * wl1)
-
-            if self.params["phi1"] != 0.:
-                # L2 penalty on stock inventory
-                poly += -self.params["phi1"] * ql1.shuffle(ql1) * E1
-
-            if self.params["phi2"] != 0.:
-                # L2 penalty on foreign currency inventory
-                poly += -self.params["phi2"] * (ql2 + wl1).shuffle(ql2 + wl1) * E1
-
-
-            # Define loss function
-            loss = -poly.dot(self.ES)
+            #criterion = p_perf.dot(W_sig_expected)
+            loss = -p_perf.dot(self.W_sig_expected)
 
             # Train
             loss.backward()
