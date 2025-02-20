@@ -21,7 +21,7 @@ import tensor_algebra as ta
 class Optimiser:
     """Solves the optimisation problem on the tensor algebra."""
 
-    def __init__(self, env, order = 3, poly_deg = 3):
+    def __init__(self, env, W_sig, order = 3, poly_deg = 3):
         self.env = env
         self.dim = self.env.dim
         self.order = order
@@ -41,7 +41,7 @@ class Optimiser:
         T = self.env.T
         #expected_sig = [1, T, 0, T**2/2,  0, 0, T/2, T**3/6, 0, 0, T**2/4, 0, 0, T**2/4, 0]
         #self.W_sig_expected = ta.sig_to_tensor(expected_sig, dim = self.dim, order = self.order)
-        self.W_sig_expected = expected_signature_bm(self.env, order = self.order, nsims = 10_000)
+        self.W_sig_expected = W_sig.truncate(self.order)
         
         # Define polynomial approx to the filtered signal's volatility
         sigma_alpha_hat = self.env.b1*self.env.V_alpha/self.env.sigma_s
