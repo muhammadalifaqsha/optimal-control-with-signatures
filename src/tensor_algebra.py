@@ -168,18 +168,40 @@ class Tensor(object):
             s = s.truncate()
         return s
     
+#     def exp(self, MAX_ITER = 100, MAX_LEVEL = 3):
+#         exp = Tensor(self.dim, 0)
+#         exp[tuple()] = 1.
+#         p = self
+#         e0 = one(self.dim)
+#         for i in range(MAX_ITER):
+#             m = p.order + self.order
+#             p = p.shuffle(self, max_order=m)
+#             p = p.truncate(order = MAX_LEVEL)
+#             s = p*(1/factorial(i+1))
+#             exp += s
+#             if float(s.dot(s)) < 1e-8:
+#                 break
+#         return exp
+    
     def exp(self, MAX_ITER = 100, MAX_LEVEL = 3):
         exp = Tensor(self.dim, 0)
         exp[tuple()] = 1.
-        p = self
-        for i in range(MAX_ITER):
+        e1 = one(self.dim)
+        p = one(self.dim)
+        l = np.sqrt(float(self.dot(self)))
+        eps = 1e-3
+        MAX_ITER_OLD = MAX_ITER
+        MAX_ITER_NEW = MAX_ITER
+        for i in range(MAX_ITER,0,-1):
+            err = i*np.log(l) - i + (i-0.5)*np.log(i) - 0.5*(np.log(2) + np.log(np.pi))
+            if (err < np.log(eps)) and (MAX_ITER_NEW <= MAX_ITER_OLD):
+                MAX_ITER_NEW = i
+                continue
             m = p.order + self.order
-            p = p.shuffle(self, max_order=m)
+            p = e1 + self.shuffle(p, max_order = m)*(1/(i))
             p = p.truncate(order = MAX_LEVEL)
-            s = p*(1/factorial(i+1))
-            exp += s
-            if float(s.dot(s)) < 1e-8:
-                break
+            MAX_ITER_OLD = i
+        exp = p
         return exp
             
             
