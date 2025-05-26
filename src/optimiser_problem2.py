@@ -102,6 +102,7 @@ class Optimiser:
         p_perf += LQ.shuffle(F, max_order = M_max)*(self.e1*self.env.b1)
         p_perf += LQ.shuffle(LF, max_order = M_max)*(self.e1*self.env.b2)
         p_perf += (LQ.shuffle(LF, max_order = M_max)).shuffle(F, max_order = M_max)*(self.e1*self.env.b3)
+        p_perf += LQ.shuffle(LF, max_order = M_max)*(self.e1*self.env.sigma2*0.5)
         #M_max = (F*self.e1).order + trunc_lev_1
         #p_perf += LQ*(self.e2*self.env.sigma0)
         #p_perf += LQ.shuffle(LF, max_order = M_max)*(self.e2*self.env.sigma2)
@@ -157,7 +158,7 @@ class Optimiser:
 
             # Defining the representation of S and \hat{\alpha} in terms of the innovation process
             trunc_lev = trunc_lev_s
-            trunc_lev_1 = trunc_lev_alpha_hat
+            F = self.F
 
             P = self.e0*self.env.S0 + (self.e0*self.env.b0 + self.env.b1*F)*self.e1 + self.e2*self.env.sigma0
             q = self.e1*self.env.b2 + self.e2*self.env.sigma2
@@ -181,6 +182,7 @@ class Optimiser:
                 if float(P_n.dot(P_n)) < 1e-8:
                     break
 
+            self.LF = LF
             LQ = self.e0*self.env.Q0 + F*self.e1
             LQ2 = self.e0*(self.env.Q0)**2 + 2*LQ.shuffle(F, max_order = M_max)*self.e1        
 
@@ -195,6 +197,7 @@ class Optimiser:
             p_perf += LQ.shuffle(F, max_order = M_max)*(self.e1*self.env.b1)
             p_perf += LQ.shuffle(LF, max_order = M_max)*(self.e1*self.env.b2)
             p_perf += (LQ.shuffle(LF, max_order = M_max)).shuffle(F, max_order = M_max)*(self.e1*self.env.b3)
+            p_perf += LQ.shuffle(LF, max_order = M_max)*(self.e1*self.env.sigma2*0.5)
             #M_max = (F*self.e1).order + trunc_lev_1
             #p_perf += LQ*(self.e2*self.env.sigma0)
             #p_perf += LQ.shuffle(LF, max_order = M_max)*(self.e2*self.env.sigma2)

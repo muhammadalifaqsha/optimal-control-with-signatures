@@ -183,7 +183,7 @@ class Tensor(object):
 #                 break
 #         return exp
     
-    def exp(self, MAX_ITER = 100, MAX_LEVEL = 3):
+    def exp(self, MAX_ITER = 100, MAX_LEVEL = 3, METHOD = '1'):
         exp = Tensor(self.dim, 0)
         exp[tuple()] = 1.
         e1 = one(self.dim)
@@ -192,16 +192,23 @@ class Tensor(object):
         eps = 1e-3
         MAX_ITER_OLD = MAX_ITER
         MAX_ITER_NEW = MAX_ITER
-        for i in range(MAX_ITER,0,-1):
-            err = i*np.log(l) - i + (i-0.5)*np.log(i) - 0.5*(np.log(2) + np.log(np.pi))
-            if (err < np.log(eps)) and (MAX_ITER_NEW <= MAX_ITER_OLD):
-                MAX_ITER_NEW = i
-                continue
-            m = p.order + self.order
-            p = e1 + self.shuffle(p, max_order = m)*(1/(i))
-            p = p.truncate(order = MAX_LEVEL)
-            MAX_ITER_OLD = i
-        exp = p
+        if METHOD == '1':
+            for i in range(MAX_ITER,0,-1):
+                err = i*np.log(l) - i + (i-0.5)*np.log(i) - 0.5*(np.log(2) + np.log(np.pi))
+                if (err < np.log(eps)) and (MAX_ITER_NEW <= MAX_ITER_OLD):
+                    MAX_ITER_NEW = i
+                    continue
+                m = p.order + self.order
+                p = e1 + self.shuffle(p, max_order = m)*(1/(i))
+                p = p.truncate(order = MAX_LEVEL)
+                MAX_ITER_OLD = i
+            exp = p
+        else:
+            for i in range(MAX_ITER):
+                p = p.shuffle(self, max_order = MAX_LEVEL)*(1/(i+1))
+                p = p.truncate(order = MAX_LEVEL)
+                exp += p
+                exp = exp.truncate(order = MAX_LEVEL)
         return exp
             
             

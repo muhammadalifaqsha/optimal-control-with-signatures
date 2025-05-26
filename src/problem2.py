@@ -156,12 +156,12 @@ class environment:
             
             self.nu_t = nu_t
             
-            dS_drift = -self.k*nu_t**2 + self.b0*Q_t + self.b1*nu_t*Q_t + self.b2*S_t*Q_t + self.b3*nu_t*S_t*Q_t - self.theta2*Q_t**2 - 2*self.theta1*Q_t*nu_t
+            dW = np.random.randn(1, nsims)*np.sqrt(dt)
+            
+            dS_drift = -self.k*nu_t**2 + self.b0*Q_t + self.b1*nu_t*Q_t + self.b2*S_t*Q_t + self.b3*nu_t*S_t*Q_t + 0.5*Q_t*self.sigma2*S_t - self.theta2*Q_t**2 - 2*self.theta1*Q_t*nu_t
             dS_vol = self.sigma0*Q_t + self.sigma2*S_t*Q_t
             
-            run_crit[it+1,:] = run_crit[it,:] + dS_drift*dt
-            
-            dW = np.random.randn(1, nsims)*np.sqrt(dt)
+            run_crit[it+1,:] = run_crit[it,:] + dS_drift*dt #+ dS_vol*dW
             
             S[it+1,:] = S[it,:] + (self.b0 + self.b1*nu_t + self.b2*S_t + self.b3*nu_t*S_t + 0.5*self.sigma2*S_t)*dt + (self.sigma0 + self.sigma2*S_t)*dW
             
