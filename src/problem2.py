@@ -202,9 +202,17 @@ def sig_strag_dot(F, order = 3):
     def strategy(env, dim, it, nsims):
         strag = np.zeros((nsims,))
         for nsim in range(nsims):
-            W_sig_flat = np.insert(env.W_sig, 0, 1)
+            W_sig_flat = np.insert(env.W_sig[:, nsim], 0, 1)
             W_sig = ta.sig_to_tensor(W_sig_flat, dim, order)
             strag[nsim] = F.dot(W_sig)
+        return strag
+    return strategy
+
+def sig_strag_dot_2(F, order = 3):
+    def strategy(env, W_sig, dim, it):
+        W_sig_flat = np.insert(W_sig[:], 0, 1)
+        W_sig = ta.sig_to_tensor(W_sig_flat, dim, order)
+        strag = F.dot(W_sig)
         return strag
     return strategy
 
