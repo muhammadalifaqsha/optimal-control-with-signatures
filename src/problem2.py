@@ -49,7 +49,7 @@ class environment:
     """
     Model parameters for the environment.
     """
-    def __init__(self, b0 = 1, b1 = 1e-3, b2 = 1, b3 = 1e-5, sigma0 = 1, sigma2 = 1, k = 1e-3, theta1 = 1, theta2 = 1e-2, S0 = 100, Q0 = 10, X0 = 0, T = 1, Nt =1_000):
+    def __init__(self, b0 = 1, b1 = 1e-3, b2 = 1, b3 = 1e-5, sigma0 = 1, sigma2 = 1, k = 1e-3, theta1 = 1, theta2 = 1e-2, S0 = 100, Q0 = 10, X0 = 0, T = 1, Nt = 1_000):
         self.b0 = b0
         self.b1 = b1
         self.b2 = b2
@@ -66,6 +66,15 @@ class environment:
         self.Nt = Nt
         self.timesteps = np.linspace(0, self.T, num = (Nt+1))
         self.dim = 2
+
+    def simulate_BM_with_drift(self, x0=0, mu=0, sigma=1, nsims=1):
+        x = np.zeros((self.Nt+1, nsims))
+        x[0,:] = x0
+        dt = self.T/(self.Nt)
+        errs = np.random.randn(self.Nt, nsims)
+        for t in range(self.Nt):
+            x[t + 1,:] = x[t,:] + dt * mu + np.sqrt(dt) * sigma * errs[t,:]
+        return x   
         
 #         # computing the conditional variance of the filter
         
@@ -132,48 +141,41 @@ class environment:
 #         self.h1 = self.G1[0,:]
 #         self.h2 = self.G1[1,:]               
 
-    def simulate(self, nsims, strategy):
+    def simulate(self, nsims, strategy, order):
         dt = self.T/(self.Nt)
-        S = np.zeros((self.Nt+1, nsims))
-        Q = np.zeros((self.Nt+1, nsims))
-        X = np.zeros((self.Nt+1, nsims))
-        W = np.zeros((self.Nt+1, nsims))
-        nu = np.zeros((self.Nt+1, nsims))
-        S[0,:] = self.S0
-        Q[0,:] = self.Q0
-        X[0,:] = self.X0
-        run_crit = np.zeros((self.Nt+1, nsims))
-        for it in range(self.Nt):
-            self.S = S
-            self.Q = Q
-            self.X = X
-            self.W = W
+        self.S = np.zeros((self.Nt+1, nsims))
+        self.Q = np.zeros((self.Nt+1, nsims))
+        self.X = np.zeros((self.Nt+1, nsims))
+        self.W = self.simulate_BM_with_drift(x0=0, mu=0, sigma=1, nsims=nsims)
+        self.W_sig = np.zeros(((self.dim**(order+1) - self.dim)//(self.dim - 1), nsims))
+        self.nu = np.zeros((self.Nt+1, nsims))
+        self.S[0,:] = self.S0
+        self.Q[0,:] = self.Q0
+        self.X[0,:] = self.X0
+        self.run_crit = np.zeros((self.Nt+1, nsims))
+        for it in range(self.Nt):            
+            S_t = self.S[it,:]
+            Q_t = self.Q[it,:]
+            dW = self.W[it+1,:] - self.W[it, :]
+            nu_t = strategy(self, self.dim, it, nsims)
+            self.nu[it, :] = nu_t
             
-            S_t = S[it,:]
-            Q_t = Q[it,:]
-            nu_t = strategy(self, it)
-            nu[it, :] = nu_t
-            
-            self.nu_t = nu_t
-            
-            dW = np.random.randn(1, nsims)*np.sqrt(dt)
+            for nsim in range(nsims):
+                path_increment = np.array([self.timesteps[it+1]-self.timesteps[it], dW[nsim]])
+                self.W_sig[:, nsim] = iisignature.sigjoin(self.W_sig[:, nsim], path_increment, order)
             
             dS_drift = -self.k*nu_t**2 + self.b0*Q_t + self.b1*nu_t*Q_t + self.b2*S_t*Q_t + self.b3*nu_t*S_t*Q_t + 0.5*Q_t*self.sigma2*S_t - self.theta2*Q_t**2 - 2*self.theta1*Q_t*nu_t
             dS_vol = self.sigma0*Q_t + self.sigma2*S_t*Q_t
             
-            run_crit[it+1,:] = run_crit[it,:] + dS_drift*dt #+ dS_vol*dW
+            self.run_crit[it+1,:] = self.run_crit[it,:] + dS_drift*dt #+ dS_vol*dW
             
-            S[it+1,:] = S[it,:] + (self.b0 + self.b1*nu_t + self.b2*S_t + self.b3*nu_t*S_t + 0.5*self.sigma2*S_t)*dt + (self.sigma0 + self.sigma2*S_t)*dW
+            self.S[it+1,:] = self.S[it,:] + (self.b0 + self.b1*nu_t + self.b2*S_t + self.b3*nu_t*S_t + 0.5*self.sigma2*S_t)*dt + (self.sigma0 + self.sigma2*S_t)*dW
             
-            W[it+1,:] = W[it,:] + dW
-            
-            Q[it+1,:] = Q[it,:] + nu_t*dt
-            X[it+1,:] = X[it,:] - (S[it,:] + self.k*nu_t)*nu_t*dt
+            self.Q[it+1,:] = self.Q[it,:] + nu_t*dt
+            self.X[it+1,:] = self.X[it,:] - (self.S[it,:] + self.k*nu_t)*nu_t*dt
          
-        nu[-1,:] = nu[-2,:]
-        self.nu = nu
+        self.nu[-1,:] = self.nu[-2,:]
         self.wealth = self.X + self.Q*self.S
-        self.run_crit = run_crit
         
 def simulate_BM_with_drift(env, x0=0, mu=0, sigma=1, nsims=1):
     x = np.zeros((env.Nt+1, nsims))
@@ -197,20 +199,12 @@ def expected_signature_bm(env, order = 3, nsims = 1_000):
     return mean_sig
         
 def sig_strag_dot(F, order = 3):
-    def strategy(env, it):
-        if it == 0:
-            strag = float(F[()])
-        else:
-            W_stopped = env.W[:(it+1),:]
-            nsims = W_stopped.shape[-1]
-            timesteps_stopped = env.timesteps[:(it+1)]
-            strag = np.zeros((nsims,))
-            for nsim in range(nsims):
-                path = np.array([timesteps_stopped,W_stopped[:, nsim]]).T
-                W_sig_flat = iisignature.sig(path, order)
-                W_sig_flat = np.insert(W_sig_flat, 0, 1)
-                W_sig = ta.sig_to_tensor(W_sig_flat, 2, order)
-                strag[nsim] = F.dot(W_sig)
+    def strategy(env, dim, it, nsims):
+        strag = np.zeros((nsims,))
+        for nsim in range(nsims):
+            W_sig_flat = np.insert(env.W_sig, 0, 1)
+            W_sig = ta.sig_to_tensor(W_sig_flat, dim, order)
+            strag[nsim] = F.dot(W_sig)
         return strag
     return strategy
 
