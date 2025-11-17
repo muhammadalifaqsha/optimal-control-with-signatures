@@ -182,10 +182,20 @@ class Tensor(object):
 #             if float(s.dot(s)) < 1e-8:
 #                 break
 #         return exp
-    
+
+    def project(self, word):
+        assert isinstance(word, tuple), "Error: input should be a tuple"
+        assert len(word) == 1, "Error: input should be a tuple of length one"
+        order = max(0, self.order - 1)
+        tensor = Tensor(self.dim, order)
+        for w in tensor.sigkeys():
+            w_pre = w + word
+            tensor[w] = self[w_pre]
+
+        return tensor
+
     def exp(self, MAX_ITER = 100, MAX_LEVEL = 3, METHOD = '1'):
         exp = Tensor(self.dim, 0)
-        exp[tuple()] = 1.
         e1 = one(self.dim)
         p = one(self.dim)
         l = np.sqrt(float(self.dot(self)))
@@ -193,6 +203,7 @@ class Tensor(object):
         MAX_ITER_OLD = MAX_ITER
         MAX_ITER_NEW = MAX_ITER
         if METHOD == '1':
+            exp[tuple()] = 1.
             for i in range(MAX_ITER,0,-1):
                 err = i*np.log(l) - i + (i-0.5)*np.log(i) - 0.5*(np.log(2) + np.log(np.pi))
                 if (err < np.log(eps)) and (MAX_ITER_NEW <= MAX_ITER_OLD):
@@ -203,7 +214,18 @@ class Tensor(object):
                 p = p.truncate(order = MAX_LEVEL)
                 MAX_ITER_OLD = i
             exp = p
+        if METHOD == '2':
+            zeroeth_lev = Tensor(self.dim, 0)
+            zeroeth_lev[tuple()] = np.exp(self[tuple()])
+            exp[tuple()] = np.exp(self[tuple()])
+            for i in range(MAX_LEVEL):
+                self_proj_1 = self.project((0,))
+                self_proj_2 = self.project((1,))
+                increment = (exp.shuffle(self_proj_1, max_order=MAX_LEVEL-1))*e(0, self.dim) + (exp.shuffle(self_proj_2, max_order=MAX_LEVEL-1))*e(1, self.dim)
+                exp = zeroeth_lev + increment
+                exp = exp.truncate(order = MAX_LEVEL)
         else:
+            exp[tuple()] = 1.
             for i in range(MAX_ITER):
                 p = p.shuffle(self, max_order = MAX_LEVEL)*(1/(i+1))
                 p = p.truncate(order = MAX_LEVEL)
