@@ -21,15 +21,15 @@ import tensor_algebra as ta
 class Optimiser:
     """Solves the optimisation problem on the tensor algebra."""
 
-    def __init__(self, env, W_sig, order = 3, poly_deg = 3):
+    def __init__(self, env, W_sig, order = 3, max_order_fn = 3):
         self.env = env
         self.dim = self.env.dim
         self.order = order
+        self.max_order_fn = max_order_fn
         self.history = []
         self.e0 = ta.word((), self.dim)
         self.e1 = ta.word((0,), self.dim)
         self.e2 = ta.word((1,), self.dim)
-        self.poly_deg = poly_deg
         self.X0 = self.e0*self.env.X0
 
         # Define the linear functionals we'll be solving for.
@@ -41,7 +41,7 @@ class Optimiser:
         T = self.env.T
         #expected_sig = [1, T, 0, T**2/2,  0, 0, T/2, T**3/6, 0, 0, T**2/4, 0, 0, T**2/4, 0]
         #self.W_sig_expected = ta.sig_to_tensor(expected_sig, dim = self.dim, order = self.order)
-        self.W_sig_expected = W_sig.truncate(self.order)
+        self.W_sig_expected = W_sig.truncate(self.max_order_fn)
 
     @staticmethod
     def _sample(path, points=100):

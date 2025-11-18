@@ -2,6 +2,7 @@ from random import random
 import numpy as np
 from scipy.interpolate import CubicSpline
 from tqdm import tqdm
+from math import factorial
 from scipy.integrate import solve_ivp
 import tensor_algebra as ta
 import iisignature
@@ -49,7 +50,7 @@ class environment:
     """
     Model parameters for the environment.
     """
-    def __init__(self, b0 = 1, b1 = 1e-3, b2 = 1, sigma0 = 1, sigma2 = 1, X0 = 10, A = 0, B = -1e-1, C = 0, D = 0, E = -1, G = 0, T = 1, Nt = 1_000):
+    def __init__(self, b0 = 1, b1 = 1e-3, b2 = 1, sigma0 = 1, sigma2 = 1, X0 = 10, A = 0, B = 1e-1, C = 0, D = 0, E = 1, G = 0, T = 1, Nt = 1_000):
         self.b0 = b0
         self.b0_tilde = self.b0 + 0.5*sigma2*sigma0
         self.b1 = b1
@@ -88,6 +89,7 @@ class environment:
         self.run_crit = np.zeros((self.Nt+1, nsims))
         for it in range(self.Nt):            
             X_t = self.X[it,:]
+            self.X_t = X_t
             dW = self.W[it+1,:] - self.W[it, :]
             nu_t = strategy(self, self.dim, it, nsims)
             self.nu[it, :] = nu_t
@@ -143,6 +145,105 @@ def sig_strag_dot_2(F, order = 3):
         return strag
     return strategy
 
+def strategy_hjb_sig_functional(env, poly_deg, max_order):
+    f2_terminal = np.array([env.E])
+    df2 = lambda t, g: -env.b1**2*g**2/env.B + (env.sigma2**2+2*env.b2_tilde)*g + env.A
+    f2 = solve_ivp(fun = df2, 
+                    t_span = [0,env.T], 
+                    y0 = f2_terminal,
+                    t_eval = env.timesteps,
+                    method = 'DOP853').y[:,::-1]
+
+    f1_terminal = np.array([2*env.G])
+    df1 = lambda t, g: env.C - env.b1*env.D*f2[0,int(((env.T-t)*env.Nt)//env.T)]/env.B + env.sigma0*env.sigma2*f2[0,int(((env.T-t)*env.Nt)//env.T)] - env.b1**2*g*f2[0,int(((env.T-t)*env.Nt)//env.T)]/env.B + f2[0,int(((env.T-t)*env.Nt)//env.T)]*env.b0_tilde + g*env.b2_tilde
+    f1 = solve_ivp(fun = df1, 
+                    t_span = [0,env.T], 
+                    y0 = f1_terminal,
+                    t_eval = env.timesteps,
+                    method = 'DOP853').y[:,::-1]
+
+    e0 = ta.word((), env.dim)
+    e1 = ta.word((0,), env.dim)
+    e2 = ta.word((1,), env.dim)
+
+    coef_0 = - (2*env.b1*f1-2*env.D)/(2*env.B)
+    coef_0 = coef_0.reshape((-1,))
+    p_coef_0 = np.polyfit(env.timesteps, coef_0, deg = poly_deg)
+    coef_x = -(2*env.b1*f2)/(2*env.B)
+    coef_x = coef_x.reshape((-1,))
+    p_coef_x = np.polyfit(env.timesteps, coef_x, deg = poly_deg)
+    factorials = np.array([factorial(i) for i in range(poly_deg + 1)])
+    p_coef_0 = p_coef_0[::-1]*factorials
+    p_coef_x = p_coef_x[::-1]*factorials
+
+    coef_0_sig = ta.sig_to_tensor([0], dim = env.dim, order = 0)
+    coef_x_sig = ta.sig_to_tensor([0], dim = env.dim, order = 0)
+    word = tuple()
+    for k in range(poly_deg + 1):
+        word_tensor = ta.word(word, env.dim)
+        coef_0_sig  += word_tensor*p_coef_0[k]
+        coef_x_sig  += word_tensor*p_coef_x[k]
+        word = (0,) + word
+
+    dim = env.dim        
+    LG = (e0*env.b2 + env.b1*coef_x_sig)*e1 + e2*env.sigma2
+    neg_LG = -LG
+    
+    exp_LG = LG.exp(MAX_LEVEL = max_order, METHOD = '2')
+    exp_neg_LG = neg_LG.exp(MAX_LEVEL = max_order-1, METHOD = '2')
+    
+    LF = exp_LG*env.X0
+    
+    term1 = (exp_neg_LG.shuffle((e0*env.b0 + env.b1*coef_0_sig), max_order = max_order-1))*e1
+    LF += exp_LG.shuffle(term1, max_order = max_order)
+    term2 = (exp_neg_LG*env.sigma0)*e2
+    LF += exp_LG.shuffle(term2, max_order = max_order)
+    
+    LF = LF.truncate(max_order)
+
+    F = coef_0_sig + coef_x_sig.shuffle(LF, max_order = max_order)
+
+    F = F.truncate(max_order)
+    
+    return F
+
+def fawcett(env, max_order):
+    T = env.T
+    exp = ta.Tensor(env.dim, 0)
+    e1 = ta.word((0,), env.dim)
+    l = e1*env.T
+    term = ta.word((), env.dim)
+    for d in range(env.dim-1):
+        l += ta.word((d+1, d+1), env.dim)*(env.T/2)
+    for n in range(max_order+1):
+        exp += term
+        term = (l*term)*(1/(n+1))
+        term = term.truncate(max_order)
+    exp = exp.truncate(max_order)
+    return exp
+        
+
+def strategy_hjb_feedback(env, dim, it, nsims):
+    f2_terminal = np.array([env.E])
+    df2 = lambda t, g: -env.b1**2*g**2/env.B + (env.sigma2**2+2*env.b2_tilde)*g + env.A
+    f2 = solve_ivp(fun = df2, 
+                    t_span = [0,env.T], 
+                    y0 = f2_terminal,
+                    t_eval = env.timesteps,
+                    method = 'DOP853').y[:,::-1]
+
+    f1_terminal = np.array([2*env.G])
+    df1 = lambda t, g: env.C - env.b1*env.D*f2[0,int(((env.T-t)*env.Nt)//env.T)]/env.B + env.sigma0*env.sigma2*f2[0,int(((env.T-t)*env.Nt)//env.T)] - env.b1**2*g*f2[0,int(((env.T-t)*env.Nt)//env.T)]/env.B + f2[0,int(((env.T-t)*env.Nt)//env.T)]*env.b0_tilde + g*env.b2_tilde
+    f1 = solve_ivp(fun = df1, 
+                    t_span = [0,env.T], 
+                    y0 = f1_terminal,
+                    t_eval = env.timesteps,
+                    method = 'DOP853').y[:,::-1]
+
+    strag = (-2*env.b1*f2[0,it]*env.X[it,:] - 2*env.b1*f1[0,it]-2*env.D)/(2*env.B)
+    
+    return strag
+    
 def sig_strag_dot_1(F, order = 3):
     def strategy(env):
         nsims = env.W.shape[-1]
