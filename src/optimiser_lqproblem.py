@@ -71,6 +71,12 @@ class Optimiser:
         
         LF = LF.truncate(max_order)
 
+        del LG
+        del exp_LG
+        del exp_neg_LG
+        del term1
+        del term2
+
         return LF
 
     def p_perf(self, F, max_order, return_running = False):
@@ -82,7 +88,8 @@ class Optimiser:
         p_perf += (F.shuffle(F, max_order = 2*self.order))*(self.e1*self.env.B)
         p_perf += 2*self.env.C*LF*self.e1
         p_perf += 2*self.env.D*F*self.e1
-        p_perf_run = p_perf
+        if return_running:
+            p_perf_run = p_perf
         p_perf += (LF.shuffle(LF, max_order = 2*max_order_x))*(self.env.E)
         p_perf += 2*self.env.G*LF
         #p_perf = p_perf.truncate(max_order_fn+1)
