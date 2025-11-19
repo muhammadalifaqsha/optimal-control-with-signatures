@@ -72,11 +72,9 @@ class Optimiser:
         LF = LF.truncate(max_order)
 
         return LF
-    
-    def value_fn(self, F, max_order_x = 3, max_order_fn = 3, truncate_fn = False, MAX_TAYLOR = 100):
-        if truncate_fn:
-            max_order_x = max_order_fn//2
-            
+
+    def p_perf(self, F, max_order, return_running = False):
+        max_order_x = max_order//2
         LF = self.LF(F, max_order_x)
 
         # Define functional of performance criterion
@@ -88,11 +86,18 @@ class Optimiser:
         p_perf += (LF.shuffle(LF, max_order = 2*max_order_x))*(self.env.E)
         p_perf += 2*self.env.G*LF
         #p_perf = p_perf.truncate(max_order_fn+1)
+        if return_running:
+            return p_perf, p_perf_run
+        else:
+            return p_perf
+        
+    def value_fn(self, F, max_order_x = 3, max_order_fn = 3, truncate_fn = False, MAX_TAYLOR = 100):
+        # if truncate_fn:
+        #     max_order_x = max_order_fn//2
+            
+        p_perf = self.p_perf(F, max_order_fn)
         
         criterion = p_perf.dot(self.W_sig_expected)
-
-        self.p_perf_run = p_perf_run
-        self.p_perf = p_perf
 
         return criterion
         
