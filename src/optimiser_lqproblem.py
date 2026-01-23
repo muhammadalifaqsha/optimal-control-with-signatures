@@ -107,6 +107,71 @@ class Optimiser:
         criterion = p_perf.dot(self.W_sig_expected)
 
         return criterion
+
+    # def poly_coef(self, max_order_x = 3, max_order_fn = 3, truncate_fn = False, MAX_TAYLOR = 100):
+    #     dim_coef = self.dim**(self.order+1) - 1
+    #     U = np.zeros((dim_coef, dim_coef))
+    #     V = np.zeros((dim_coef,))
+    #     p0 = float(self.value_fn(ta.zero(self.dim), max_order_x, max_order_fn, truncate_fn, MAX_TAYLOR))
+
+    #     for m, i in enumerate(tqdm(list(self.F.sigkeys()),  desc='outer loop', position = 0)):
+    #         for n, j in enumerate(tqdm(list(self.F.sigkeys()), desc='inner loop', position = 1)):
+    #             if n < m:
+    #                 continue
+                    
+    #             e1 = ta.word(i, self.dim)
+    #             p1 = float(self.value_fn(e1, max_order_x, max_order_fn, truncate_fn, MAX_TAYLOR))
+    #             p1_neg = float(self.value_fn(-e1, max_order_x, max_order_fn, truncate_fn, MAX_TAYLOR))
+    #             U[m,m] = (p1 + p1_neg)/2 - p0
+    #             V[m] = p1 - U[m,m] - p0
+                
+    #             e2 = ta.word(j, self.dim)
+    #             p2 = float(self.value_fn(e2, max_order_x, max_order_fn, truncate_fn, MAX_TAYLOR))
+    #             p2_neg = float(self.value_fn(-e2, max_order_x, max_order_fn, truncate_fn, MAX_TAYLOR))
+    #             U[n,n] = (p2 + p2_neg)/2 - p0
+    #             V[n] = p2 - U[n,n] - p0
+
+    #             p12 = float(self.value_fn(e1 + e2, max_order_x, max_order_fn, truncate_fn, MAX_TAYLOR))
+
+    #             U[m,n] = (p12 - U[m,m] - U[n,n] - V[m] - V[n] - p0)/2
+    #             U[n,m] = U[m,n]
+
+    #     return U, V, p0
+
+    def poly_coef(self, max_order_x = 3, max_order_fn = 3, truncate_fn = False, MAX_TAYLOR = 100):
+        dim_coef = len(list(self.F.sigkeys()))
+        U = np.zeros((dim_coef, dim_coef))
+        V = np.zeros((dim_coef,))
+        p0 = float(self.value_fn(ta.zero(self.dim), max_order_x, max_order_fn, truncate_fn, MAX_TAYLOR))
+
+        with tqdm(total=dim_coef*(dim_coef-1)//2) as pbar:
+            for m, i in enumerate(list(self.F.sigkeys())):
+                for n, j in enumerate(list(self.F.sigkeys())):
+                    
+                    e1 = ta.word(i, self.dim)
+                    p1 = float(self.value_fn(e1, max_order_x, max_order_fn, truncate_fn, MAX_TAYLOR))
+                    p1_neg = float(self.value_fn(-e1, max_order_x, max_order_fn, truncate_fn, MAX_TAYLOR))
+                    U[m,m] = (p1 + p1_neg)/2 - p0
+                    V[m] = p1 - U[m,m] - p0
+
+                    if n <= m:
+                        continue
+                    
+                    e2 = ta.word(j, self.dim)
+                    p2 = float(self.value_fn(e2, max_order_x, max_order_fn, truncate_fn, MAX_TAYLOR))
+                    p2_neg = float(self.value_fn(-e2, max_order_x, max_order_fn, truncate_fn, MAX_TAYLOR))
+                    U[n,n] = (p2 + p2_neg)/2 - p0
+                    V[n] = p2 - U[n,n] - p0
+    
+                    p12 = float(self.value_fn(e1 + e2, max_order_x, max_order_fn, truncate_fn, MAX_TAYLOR))
+    
+                    U[m,n] = (p12 - U[m,m] - U[n,n] - V[m] - V[n] - p0)/2
+                    U[n,m] = U[m,n]
+
+                    #pbar.set_description('processed: %d' % (1 + i))
+                    pbar.update(1)
+
+        return U, V, p0
         
     def train_sgd(self, n_epochs, lr=0.01, max_order_x = 3, max_order_fn = 3, method="SGD", truncate_fn = False, MAX_TAYLOR=100):
         

@@ -185,15 +185,15 @@ class Tensor(object):
 
     def project(self, word):
         assert isinstance(word, tuple), "Error: input should be a tuple"
-        assert len(word) == 1, "Error: input should be a tuple of length one"
-        order = max(0, self.order - 1)
+        #assert len(word) == 1, "Error: input should be a tuple of length one"
+        order = max(0, self.order - len(word))
         tensor = Tensor(self.dim, order)
         for w in tensor.sigkeys():
             w_pre = w + word
             tensor[w] = self[w_pre]
 
         return tensor
-
+        
     def exp(self, MAX_ITER = 100, MAX_LEVEL = 3, METHOD = '1'):
         exp = Tensor(self.dim, 0)
         e1 = one(self.dim)
@@ -216,8 +216,10 @@ class Tensor(object):
             exp = p
         if METHOD == '2':
             zeroeth_lev = Tensor(self.dim, 0)
-            zeroeth_lev[tuple()] = np.exp(self[tuple()])
-            exp[tuple()] = np.exp(self[tuple()])
+            zeroeth_element = self.value[0].detach().numpy()
+            #zeroeth_lev[tuple()] = np.exp(self[tuple()])
+            zeroeth_lev[tuple()] = np.exp(zeroeth_element)
+            exp[tuple()] = np.exp(zeroeth_element)
             for i in range(MAX_LEVEL):
                 self_proj_1 = self.project((0,))
                 self_proj_2 = self.project((1,))

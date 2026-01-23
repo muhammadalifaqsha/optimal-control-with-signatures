@@ -166,15 +166,26 @@ def strategy_hjb_sig_functional(env, poly_deg, max_order):
     e1 = ta.word((0,), env.dim)
     e2 = ta.word((1,), env.dim)
 
-    coef_0 = - (2*env.b1*f1-2*env.D)/(2*env.B)
-    coef_0 = coef_0.reshape((-1,))
-    p_coef_0 = np.polyfit(env.timesteps, coef_0, deg = poly_deg)
-    coef_x = -(2*env.b1*f2)/(2*env.B)
-    coef_x = coef_x.reshape((-1,))
-    p_coef_x = np.polyfit(env.timesteps, coef_x, deg = poly_deg)
+    f1 = f1.reshape((-1,))
+    f2 = f2.reshape((-1,))
+    p_coef_f1 = np.polyfit(env.timesteps, f1, deg = poly_deg)
+    p_coef_f2 = np.polyfit(env.timesteps, f2, deg = poly_deg)
     factorials = np.array([factorial(i) for i in range(poly_deg + 1)])
-    p_coef_0 = p_coef_0[::-1]*factorials
-    p_coef_x = p_coef_x[::-1]*factorials
+    p_coef_f1 = p_coef_f1[::-1]*factorials
+    p_coef_f2 = p_coef_f2[::-1]*factorials
+    p_coef_0 =  - (env.b1*p_coef_f1)/(env.B)
+    p_coef_0[0] -= env.D/env.B
+    p_coef_x = -(env.b1*p_coef_f2)/(env.B)
+    
+    # coef_0 = - (2*env.b1*f1+2*env.D)/(2*env.B)
+    # coef_0 = coef_0.reshape((-1,))
+    # p_coef_0 = np.polyfit(env.timesteps, coef_0, deg = poly_deg)
+    # coef_x = -(2*env.b1*f2)/(2*env.B)
+    # coef_x = coef_x.reshape((-1,))
+    # p_coef_x = np.polyfit(env.timesteps, coef_x, deg = poly_deg)
+    # factorials = np.array([factorial(i) for i in range(poly_deg + 1)])
+    # p_coef_0 = p_coef_0[::-1]*factorials
+    # p_coef_x = p_coef_x[::-1]*factorials
 
     coef_0_sig = ta.sig_to_tensor([0], dim = env.dim, order = 0)
     coef_x_sig = ta.sig_to_tensor([0], dim = env.dim, order = 0)
@@ -205,7 +216,7 @@ def strategy_hjb_sig_functional(env, poly_deg, max_order):
 
     F = F.truncate(max_order)
     
-    return F
+    return f1, f2, F
 
 def fawcett(env, max_order):
     T = env.T
