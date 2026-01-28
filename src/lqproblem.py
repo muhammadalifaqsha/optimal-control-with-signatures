@@ -69,6 +69,8 @@ class environment:
         self.Nt = Nt
         self.timesteps = np.linspace(0, self.T, num = (Nt+1))
         self.dim = 2
+        self.first_time_run_sim = True
+        self.nsims = None
 
     def simulate_BM_with_drift(self, x0=0, mu=0, sigma=1, nsims=1):
         x = np.zeros((self.Nt+1, nsims))
@@ -78,12 +80,31 @@ class environment:
         for t in range(self.Nt):
             x[t + 1,:] = x[t,:] + dt * mu + np.sqrt(dt) * sigma * errs[t,:]
         return x   
+
+    def BM_signature(self, W, order):
+        nsims = W.shape[1]
+        W_sig = np.zeros((self.Nt+1, (self.dim**(order+1) - self.dim)//(self.dim - 1), nsims))
+        for it in range(self.Nt-1):
+            dW = W[it+1,:] - W[it, :]
+            for nsim in range(nsims):
+                path_increment = np.array([self.timesteps[it+1]-self.timesteps[it], dW[nsim]])
+                W_sig[it+1, :, nsim] = iisignature.sigjoin(W_sig[it, :, nsim], path_increment, order)
+        return W_sig
         
-    def simulate(self, nsims, strategy, order):
+    def simulate(self, nsims, strategy, order, fast = False):
+        # (fast = True) is for computing the signatures of W (e.g. for signature-based control)
         dt = self.T/(self.Nt)
         self.X = np.zeros((self.Nt+1, nsims))
-        self.W = self.simulate_BM_with_drift(x0=0, mu=0, sigma=1, nsims=nsims)
-        self.W_sig = np.zeros(((self.dim**(order+1) - self.dim)//(self.dim - 1), nsims))
+        if nsims != self.nsims:
+            self.first_time_run_sim = True
+        if self.first_time_run_sim:
+            self.nsims = nsims
+            self.W = self.simulate_BM_with_drift(x0=0, mu=0, sigma=1, nsims=nsims)
+            if not fast:
+                self.W_sig_hist = self.BM_signature(self.W, order)
+            self.first_time_run_sim = False
+        if not fast:
+            self.W_sig = np.zeros(((self.dim**(order+1) - self.dim)//(self.dim - 1), nsims))
         self.nu = np.zeros((self.Nt+1, nsims))
         self.X[0,:] = self.X0
         self.run_crit = np.zeros((self.Nt+1, nsims))
@@ -93,10 +114,9 @@ class environment:
             dW = self.W[it+1,:] - self.W[it, :]
             nu_t = strategy(self, self.dim, it, nsims)
             self.nu[it, :] = nu_t
-            
-            for nsim in range(nsims):
-                path_increment = np.array([self.timesteps[it+1]-self.timesteps[it], dW[nsim]])
-                self.W_sig[:, nsim] = iisignature.sigjoin(self.W_sig[:, nsim], path_increment, order)
+
+            if not fast:
+                self.W_sig = self.W_sig_hist[it, :, :]
 
             integrand = self.A*X_t**2 + self.B*nu_t**2 + 2*self.C*X_t + 2*self.D*nu_t
             self.run_crit[it+1,:] = self.run_crit[it,:] + integrand*dt
@@ -105,7 +125,7 @@ class environment:
          
         self.nu[-1,:] = self.nu[-2,:]
         self.performance = self.run_crit[-1,:] + self.E*self.X[-1,:]**2 + 2*self.G*self.X[-1,:]
-        
+
 def simulate_BM_with_drift(env, x0=0, mu=0, sigma=1, nsims=1):
     x = np.zeros((env.Nt+1, nsims))
     x[0,:] = x0
