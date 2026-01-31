@@ -14,7 +14,7 @@ torch.set_default_tensor_type(torch.DoubleTensor)
 torch.set_default_dtype(torch.float64)
 
 import iisignature
-from problem2 import *
+#from problem2 import *
 
 import tensor_algebra as ta
 
