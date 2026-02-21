@@ -157,6 +157,22 @@ def sig_strag_dot(F, order = 3):
         return strag
     return strategy
 
+def sig_strag_dot_vec(F, order = 3):
+    def strategy(env, dim, it, nsims):
+        strag = np.zeros((nsims,))
+        F_flat = F.flatten()
+        F_flat = F_flat.reshape((1,-1))
+        dim_tensor = (env.dim**(order+1) - env.dim)//(env.dim - 1)
+        if dim_tensor == 0:
+            strag = F_flat[:, 0]
+        else:
+            W_sig_trunc = env.W_sig[:dim_tensor, :]
+            strag = (F_flat[:, 1:])@W_sig_trunc
+            strag = strag + F_flat[:, 0]
+            strag = strag.reshape((-1,))
+        return strag
+    return strategy
+
 def sig_strag_dot_2(F, order = 3):
     def strategy(env, W_sig, dim, it):
         W_sig_flat = np.insert(W_sig[:], 0, 1)
