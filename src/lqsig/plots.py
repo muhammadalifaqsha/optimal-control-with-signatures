@@ -42,8 +42,9 @@ def grid_figure(Ls, Ms, value, ylabel, what, prefix, fname, hlines=(), log=False
         a.legend(ncol=2)
     ax[0].set_xlabel(r"$\mathrm{control\ level}\ M$", fontsize = font1); ax[0].set_xticks(Ms); ax[0].set_xlim(min(Ms), max(Ms))
     ax[1].set_xlabel(r"$\mathrm{state\ level}\ " + Lsym + "$", fontsize = font1); ax[1].set_xticks(Ls); ax[1].set_xlim(min(Ls), max(Ls))
-    ax[0].legend(fontsize=font2, loc='lower center', bbox_to_anchor=(0.5, 1.0), ncol=3)
-    ax[1].legend(fontsize=font2, loc='lower center', bbox_to_anchor=(0.5, 1.0), ncol=3)
+    for a in ax:                                        # entries left to right, then down
+        h, l = _row_major(*a.get_legend_handles_labels(), 4)
+        a.legend(h, l, fontsize=font2, loc='lower center', bbox_to_anchor=(0.5, 1.0), ncol=4)
     #fig.suptitle("$" + prefix + r"{:}\ " + what + "$", fontsize='large')
     fig.tight_layout(); save_figure(fig, fname); plt.show()
 
@@ -126,3 +127,9 @@ def compare_paths(model, dW, dt, controls, simulator, path=0, title="", fname=No
     if fname is not None: save_figure(fig, fname)
     plt.show()
     return sims
+
+def _row_major(handles, labels, ncol):
+    """Reorder legend entries so that matplotlib, which fills a legend column by column, shows them row by row
+    (left to right, then down)."""
+    idx = [k for j in range(ncol) for k in range(j, len(handles), ncol)]
+    return [handles[k] for k in idx], [labels[k] for k in idx]
